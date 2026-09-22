@@ -1,0 +1,1081 @@
+  <launch>
+
+    <!-- Custom JSON scenario map. If use_custom_map=true, random_forest is disabled and scenario_executor publishes map_generator/global_cloud. -->
+    <arg name="use_custom_map" default="true"/>
+    <arg name="scenario_json" default="$(find ego_planner)/scripts/map_publish/raven.json"/>
+
+    <arg name="map_size_x" value="42.0"/>
+    <arg name="map_size_y" value="30.0"/>
+    <arg name="map_size_z" value=" 5.0"/>
+
+    <arg name="odom_topic" value="visual_slam/odom" />
+
+    <!-- 新增：广播轨迹偏移配置 -->
+    <arg name="malicious_id" default="1"/>           <!-- 哪个无人机广播偏移 -->
+    <arg name="mal_type" value="1"/>  //0：无攻击；1：广播偏移；2：生成幻影轨迹；3：全局攻击；4：针对单个无人机的幻影轨迹
+
+    <arg name="lambda_adv_swarm" default="10.0"/>  <!-- Swarm cost 权重 -->
+
+    <arg name="broadcast_offset_x" default="1.5"/>   <!-- 偏移 X -->
+    <arg name="broadcast_offset_y" default="2.0"/>   <!-- 偏移 Y -->
+    <arg name="broadcast_offset_z" default="0.0"/>   <!-- 偏移 Z -->
+
+        <!-- 幻影参数（新增） -->
+    <arg name="phantom_fake_drone_id" default="11"/>      <!-- 虚假无人机编号 -->
+    <arg name="phantom_shape" default="circle"/>          <!-- circle / eight -->
+    <arg name="phantom_radius" default="1.0"/>            <!-- 幻影轨迹半径 -->
+    <arg name="phantom_samples" default="40"/>
+    <arg name="phantom_dt" default="0.1"/>
+    <arg name="phantom_z_offset" default="0.0"/>
+
+    <!-- 关键参数：让幻影出现在目标无人机附近 -->
+    <arg name="phantom_target_drone_id" default="9"/>     <!-- 被干扰的目标无人机ID -->
+    <arg name="phantom_time_offset" default="0.5"/>       <!-- 幻影在目标轨迹未来多少秒处出现 -->
+
+    <!-- Phantom attack experiment global switches -->
+    <arg name="attack_enable" default="true"/>
+    <arg name="attack_method" default="full_attack"/>
+    <arg name="attack_method_id" default="0"/>
+    <arg name="attack_scenario" default="herding"/>
+    <arg name="attack_scenario_id" default="1"/>
+    <arg name="attack_swarm_weight" default="2.0"/>
+    <arg name="attack_scenario_weight" default="2.0"/>
+    <arg name="attack_impact_distance_weight" default="0.25"/>
+    <arg name="attack_offset_penalty_weight" default="0.005"/>
+    <arg name="attack_herding_weight" default="1.0"/>
+    <arg name="attack_trap_weight" default="1.0"/>
+    <arg name="attack_oscillation_weight" default="1.0"/>
+    <arg name="attack_herding_direction_x" default="2.0"/>
+    <arg name="attack_herding_direction_y" default="0.0"/>
+    <arg name="attack_herding_direction_z" default="0.0"/>
+    <arg name="attack_use_manual_trap_exit" default="false"/>
+    <arg name="attack_trap_exit_x" default="0.0"/>
+    <arg name="attack_trap_exit_y" default="0.0"/>
+    <arg name="attack_trap_exit_z" default="1.0"/>
+    <arg name="attack_trap_exit_radius" default="1.5"/>
+    <arg name="attack_use_manual_goal" default="false"/>
+    <arg name="attack_goal_x" default="0.0"/>
+    <arg name="attack_goal_y" default="0.0"/>
+    <arg name="attack_goal_z" default="1.0"/>
+    <arg name="attack_goal_region_radius" default="2.0"/>
+    <arg name="attack_oscillation_period" default="2.0"/>
+    <arg name="attack_malicious_drone_id" default="$(arg malicious_id)"/>
+    <arg name="attack_victim_drone_id" default="0"/>
+    <arg name="attack_phantom_fake_drone_id" default="1"/>
+    <arg name="attack_window_enable" default="false"/>
+    <arg name="attack_start_time" default="0.0"/>
+    <arg name="attack_duration" default="9999.0"/>
+    <arg name="attack_max_offset_radius" default="1.50"/>
+    <arg name="attack_direction_samples" default="32"/>
+    <arg name="attack_radius_samples" default="16"/>
+    <arg name="attack_horizon" default="6.0"/>
+    <arg name="attack_dt" default="0.1"/>
+    <arg name="attack_clearance" default="0.8"/>
+    <arg name="attack_continuity_enable" default="true"/>
+    <arg name="attack_smoothing_time" default="0.3"/>
+    <arg name="attack_max_offset_rate" default="2.0"/>
+    <arg name="attack_ramp_ctrl_pts" default="3"/>
+    <arg name="attack_ramp_power" default="0.7"/>
+    <arg name="attack_max_vel_check" default="5.0"/>
+    <arg name="attack_max_acc_check" default="8.0"/>
+    <arg name="attack_max_jerk_check" default="20.0"/>
+
+    <arg name="attack_preserve_fake_ratio" default="0.7"/>
+
+    <arg name="experiment_log_enable" default="true"/>
+    <arg name="experiment_log_file" default="$(env HOME)/ego_phantom_trial_summary.csv"/>
+    <arg name="experiment_scenario" default="swarm"/>
+    <arg name="experiment_seed" default="0"/>
+    <arg name="experiment_swarm_size" default="10"/>
+    <arg name="experiment_attacker_count" default="1"/>
+    <arg name="experiment_trial_id" default="trial_0"/>
+    <arg name="experiment_map" default="unknown"/>
+    <arg name="experiment_comm_radius" default="-1.0"/>
+    <arg name="experiment_sharing_freq" default="-1.0"/>
+    <arg name="experiment_log_owner_drone_id" default="-9999"/>
+    <arg name="experiment_per_uav_log_file" default="$(env HOME)/ego_phantom_per_uav_summary.csv"/>
+    <arg name="experiment_per_uav_log_enable" default="true"/>
+    <arg name="experiment_timeseries_log_file" default="$(env HOME)/ego_phantom_timeseries.csv"/>
+    <arg name="experiment_timeseries_log_enable" default="true"/>
+    <arg name="experiment_timeseries_interval" default="0.5"/>
+
+    <group unless="$(arg use_custom_map)">
+        <node pkg ="map_generator" name ="random_forest" type ="random_forest" output = "screen">    
+            <param name="map/x_size"     value="36" />
+            <param name="map/y_size"     value="20" />
+            <param name="map/z_size"     value="3" />
+            <param name="map/resolution" value="0.1"/>        
+
+            <param name="ObstacleShape/seed" value="1"/>
+            
+            <param name="map/obs_num"    value="300"/>      // 障碍物数量
+            <param name="ObstacleShape/lower_rad" value="0.2"/>  // 障碍物半径下限
+            <param name="ObstacleShape/upper_rad" value="0.5"/>  // 障碍物半径上限
+            <param name="ObstacleShape/lower_hei" value="0.0"/>  // 障碍物高度下限
+            <param name="ObstacleShape/upper_hei" value="3.0"/>          // 障碍物高度上限
+
+            <param name="map/circle_num" value="300"/>          // 圆形障碍物数量
+            <param name="ObstacleShape/radius_l" value="0.2"/>          // 圆形障碍物半径下限
+            <param name="ObstacleShape/radius_h" value="0.5"/>          // 圆形障碍物半径上限
+            <param name="ObstacleShape/z_l" value="0.7"/>          // 圆形障碍物高度下限
+            <param name="ObstacleShape/z_h" value="0.8"/>          // 圆形障碍物高度上限
+            <param name="ObstacleShape/theta" value="0.5"/>          // 圆形障碍物角度下限
+
+            <param name="sensing/radius" value="5.0"/>          // 传感器半径
+            <param name="sensing/rate"   value="1.0"/>          // 传感器刷新率
+            
+            <param name="min_distance" value="1.2"/>          // 障碍物间最小距离
+        </node>
+    </group>
+    <group if="$(arg use_custom_map)">
+        <include file="$(find ego_planner)/launch/custom_scenario_map.launch">
+            <arg name="scenario_json" value="$(arg scenario_json)"/>
+            <arg name="map_topic" value="/map_generator/global_cloud"/>
+            <arg name="frame_id" value="world"/>
+            <arg name="publish_rate" value="10.0"/>
+        </include>
+    </group>
+
+
+    <include file="$(find ego_planner)/launch/run_in_sim.launch">
+        <arg name="drone_id" value="0"/>
+
+        <arg name="init_x" value="-17.2"/>
+        <arg name="init_y" value="-10.3"/>
+         <arg name="init_z" value="0.1"/>
+
+        <arg name="target_x" value="17.0"/>
+        <arg name="target_y" value="11.0"/>
+        <arg name="target_z" value="1"/>
+
+        <arg name="map_size_x" value="$(arg map_size_x)"/>
+        <arg name="map_size_y" value="$(arg map_size_y)"/>
+        <arg name="map_size_z" value="$(arg map_size_z)"/>
+        <arg name="odom_topic" value="$(arg odom_topic)"/>
+
+        <arg name="malicious_drone_id" value="$(arg malicious_id)"/>
+        <arg name="mal_type" value="$(arg mal_type)"/>
+        <arg name="lambda_adv_swarm" value="$(arg lambda_adv_swarm)"/>
+        <arg name="broadcast_offset_x" value="$(arg broadcast_offset_x)"/>
+        <arg name="broadcast_offset_y" value="$(arg broadcast_offset_y)"/>
+        <arg name="broadcast_offset_z" value="$(arg broadcast_offset_z)"/>
+        <arg name="phantom_fake_drone_id" value="$(arg phantom_fake_drone_id)"/>
+        <arg name="phantom_shape" value="$(arg phantom_shape)"/>
+        <arg name="phantom_radius" value="$(arg phantom_radius)"/>
+        <arg name="phantom_samples" value="$(arg phantom_samples)"/>
+        <arg name="phantom_dt" value="$(arg phantom_dt)"/>
+        <arg name="phantom_z_offset" value="$(arg phantom_z_offset)"/>
+        <arg name="phantom_target_drone_id" value="$(arg phantom_target_drone_id)"/>
+        <arg name="phantom_time_offset" value="$(arg phantom_time_offset)"/>
+        <arg name="attack_enable" value="$(arg attack_enable)"/>
+        <arg name="attack_method" value="$(arg attack_method)"/>
+        <arg name="attack_method_id" value="$(arg attack_method_id)"/>
+        <arg name="attack_scenario" value="$(arg attack_scenario)"/>
+        <arg name="attack_scenario_id" value="$(arg attack_scenario_id)"/>
+        <arg name="attack_swarm_weight" value="$(arg attack_swarm_weight)"/>
+        <arg name="attack_scenario_weight" value="$(arg attack_scenario_weight)"/>
+        <arg name="attack_impact_distance_weight" value="$(arg attack_impact_distance_weight)"/>
+        <arg name="attack_offset_penalty_weight" value="$(arg attack_offset_penalty_weight)"/>
+        <arg name="attack_herding_weight" value="$(arg attack_herding_weight)"/>
+        <arg name="attack_trap_weight" value="$(arg attack_trap_weight)"/>
+        <arg name="attack_oscillation_weight" value="$(arg attack_oscillation_weight)"/>
+        <arg name="attack_herding_direction_x" value="$(arg attack_herding_direction_x)"/>
+        <arg name="attack_herding_direction_y" value="$(arg attack_herding_direction_y)"/>
+        <arg name="attack_herding_direction_z" value="$(arg attack_herding_direction_z)"/>
+        <arg name="attack_use_manual_trap_exit" value="$(arg attack_use_manual_trap_exit)"/>
+        <arg name="attack_trap_exit_x" value="$(arg attack_trap_exit_x)"/>
+        <arg name="attack_trap_exit_y" value="$(arg attack_trap_exit_y)"/>
+        <arg name="attack_trap_exit_z" value="$(arg attack_trap_exit_z)"/>
+        <arg name="attack_trap_exit_radius" value="$(arg attack_trap_exit_radius)"/>
+        <arg name="attack_use_manual_goal" value="$(arg attack_use_manual_goal)"/>
+        <arg name="attack_goal_x" value="$(arg attack_goal_x)"/>
+        <arg name="attack_goal_y" value="$(arg attack_goal_y)"/>
+        <arg name="attack_goal_z" value="$(arg attack_goal_z)"/>
+        <arg name="attack_goal_region_radius" value="$(arg attack_goal_region_radius)"/>
+        <arg name="attack_oscillation_period" value="$(arg attack_oscillation_period)"/>
+        <arg name="attack_malicious_drone_id" value="$(arg attack_malicious_drone_id)"/>
+        <arg name="attack_victim_drone_id" value="$(arg attack_victim_drone_id)"/>
+        <arg name="attack_phantom_fake_drone_id" value="$(arg attack_phantom_fake_drone_id)"/>
+        <arg name="attack_window_enable" value="$(arg attack_window_enable)"/>
+        <arg name="attack_start_time" value="$(arg attack_start_time)"/>
+        <arg name="attack_duration" value="$(arg attack_duration)"/>
+        <arg name="attack_max_offset_radius" value="$(arg attack_max_offset_radius)"/>
+        <arg name="attack_direction_samples" value="$(arg attack_direction_samples)"/>
+        <arg name="attack_radius_samples" value="$(arg attack_radius_samples)"/>
+        <arg name="attack_horizon" value="$(arg attack_horizon)"/>
+        <arg name="attack_dt" value="$(arg attack_dt)"/>
+        <arg name="attack_clearance" value="$(arg attack_clearance)"/>
+        <arg name="attack_continuity_enable" value="$(arg attack_continuity_enable)"/>
+        <arg name="attack_smoothing_time" value="$(arg attack_smoothing_time)"/>
+        <arg name="attack_max_offset_rate" value="$(arg attack_max_offset_rate)"/>
+        <arg name="attack_ramp_ctrl_pts" value="$(arg attack_ramp_ctrl_pts)"/>
+        <arg name="attack_ramp_power" value="$(arg attack_ramp_power)"/>
+        <arg name="attack_max_vel_check" value="$(arg attack_max_vel_check)"/>
+        <arg name="attack_max_acc_check" value="$(arg attack_max_acc_check)"/>
+        <arg name="attack_max_jerk_check" value="$(arg attack_max_jerk_check)"/>
+        <arg name="attack_preserve_fake_ratio" default="0.7"/>
+        <arg name="experiment_log_enable" value="$(arg experiment_log_enable)"/>
+        <arg name="experiment_log_file" value="$(arg experiment_log_file)"/>
+        <arg name="experiment_scenario" value="$(arg experiment_scenario)"/>
+        <arg name="experiment_seed" value="$(arg experiment_seed)"/>
+        <arg name="experiment_swarm_size" value="$(arg experiment_swarm_size)"/>
+        <arg name="experiment_attacker_count" value="$(arg experiment_attacker_count)"/>
+        <arg name="experiment_trial_id" value="$(arg experiment_trial_id)"/>
+        <arg name="experiment_map" value="$(arg experiment_map)"/>
+        <arg name="experiment_comm_radius" value="$(arg experiment_comm_radius)"/>
+        <arg name="experiment_sharing_freq" value="$(arg experiment_sharing_freq)"/>
+        <arg name="experiment_log_owner_drone_id" value="$(arg experiment_log_owner_drone_id)"/>
+        <arg name="experiment_per_uav_log_file" value="$(arg experiment_per_uav_log_file)"/>
+        <arg name="experiment_per_uav_log_enable" value="$(arg experiment_per_uav_log_enable)"/>
+        <arg name="experiment_timeseries_log_file" value="$(arg experiment_timeseries_log_file)"/>
+        <arg name="experiment_timeseries_log_enable" value="$(arg experiment_timeseries_log_enable)"/>
+        <arg name="experiment_timeseries_interval" value="$(arg experiment_timeseries_interval)"/>
+    </include>
+
+    <include file="$(find ego_planner)/launch/run_in_sim.launch">
+        <arg name="drone_id" value="1"/>
+
+        <arg name="init_x" value="-15.0"/>
+        <arg name="init_y" value="-11.3"/>
+         <arg name="init_z" value="0.1"/>
+
+        <arg name="target_x" value="15.0"/>
+        <arg name="target_y" value="9.0"/>
+        <arg name="target_z" value="1"/>
+
+        <arg name="map_size_x" value="$(arg map_size_x)"/>
+        <arg name="map_size_y" value="$(arg map_size_y)"/>
+        <arg name="map_size_z" value="$(arg map_size_z)"/>
+        <arg name="odom_topic" value="$(arg odom_topic)"/>
+        
+        <arg name="malicious_drone_id" value="$(arg malicious_id)"/>
+        <arg name="mal_type" value="$(arg mal_type)"/>
+        <arg name="lambda_adv_swarm" value="$(arg lambda_adv_swarm)"/>
+        <arg name="broadcast_offset_x" value="$(arg broadcast_offset_x)"/>
+        <arg name="broadcast_offset_y" value="$(arg broadcast_offset_y)"/>
+        <arg name="broadcast_offset_z" value="$(arg broadcast_offset_z)"/>
+        <arg name="phantom_fake_drone_id" value="$(arg phantom_fake_drone_id)"/>
+        <arg name="phantom_shape" value="$(arg phantom_shape)"/>
+        <arg name="phantom_radius" value="$(arg phantom_radius)"/>
+        <arg name="phantom_samples" value="$(arg phantom_samples)"/>
+        <arg name="phantom_dt" value="$(arg phantom_dt)"/>
+        <arg name="phantom_z_offset" value="$(arg phantom_z_offset)"/>
+        <arg name="phantom_target_drone_id" value="$(arg phantom_target_drone_id)"/>
+        <arg name="phantom_time_offset" value="$(arg phantom_time_offset)"/>
+        <arg name="attack_enable" value="$(arg attack_enable)"/>
+        <arg name="attack_method" value="$(arg attack_method)"/>
+        <arg name="attack_method_id" value="$(arg attack_method_id)"/>
+        <arg name="attack_scenario" value="$(arg attack_scenario)"/>
+        <arg name="attack_scenario_id" value="$(arg attack_scenario_id)"/>
+        <arg name="attack_swarm_weight" value="$(arg attack_swarm_weight)"/>
+        <arg name="attack_scenario_weight" value="$(arg attack_scenario_weight)"/>
+        <arg name="attack_impact_distance_weight" value="$(arg attack_impact_distance_weight)"/>
+        <arg name="attack_offset_penalty_weight" value="$(arg attack_offset_penalty_weight)"/>
+        <arg name="attack_herding_weight" value="$(arg attack_herding_weight)"/>
+        <arg name="attack_trap_weight" value="$(arg attack_trap_weight)"/>
+        <arg name="attack_oscillation_weight" value="$(arg attack_oscillation_weight)"/>
+        <arg name="attack_herding_direction_x" value="$(arg attack_herding_direction_x)"/>
+        <arg name="attack_herding_direction_y" value="$(arg attack_herding_direction_y)"/>
+        <arg name="attack_herding_direction_z" value="$(arg attack_herding_direction_z)"/>
+        <arg name="attack_use_manual_trap_exit" value="$(arg attack_use_manual_trap_exit)"/>
+        <arg name="attack_trap_exit_x" value="$(arg attack_trap_exit_x)"/>
+        <arg name="attack_trap_exit_y" value="$(arg attack_trap_exit_y)"/>
+        <arg name="attack_trap_exit_z" value="$(arg attack_trap_exit_z)"/>
+        <arg name="attack_trap_exit_radius" value="$(arg attack_trap_exit_radius)"/>
+        <arg name="attack_use_manual_goal" value="$(arg attack_use_manual_goal)"/>
+        <arg name="attack_goal_x" value="$(arg attack_goal_x)"/>
+        <arg name="attack_goal_y" value="$(arg attack_goal_y)"/>
+        <arg name="attack_goal_z" value="$(arg attack_goal_z)"/>
+        <arg name="attack_goal_region_radius" value="$(arg attack_goal_region_radius)"/>
+        <arg name="attack_oscillation_period" value="$(arg attack_oscillation_period)"/>
+        <arg name="attack_malicious_drone_id" value="$(arg attack_malicious_drone_id)"/>
+        <arg name="attack_victim_drone_id" value="$(arg attack_victim_drone_id)"/>
+        <arg name="attack_phantom_fake_drone_id" value="$(arg attack_phantom_fake_drone_id)"/>
+        <arg name="attack_window_enable" value="$(arg attack_window_enable)"/>
+        <arg name="attack_start_time" value="$(arg attack_start_time)"/>
+        <arg name="attack_duration" value="$(arg attack_duration)"/>
+        <arg name="attack_max_offset_radius" value="$(arg attack_max_offset_radius)"/>
+        <arg name="attack_direction_samples" value="$(arg attack_direction_samples)"/>
+        <arg name="attack_radius_samples" value="$(arg attack_radius_samples)"/>
+        <arg name="attack_horizon" value="$(arg attack_horizon)"/>
+        <arg name="attack_dt" value="$(arg attack_dt)"/>
+        <arg name="attack_clearance" value="$(arg attack_clearance)"/>
+        <arg name="attack_continuity_enable" value="$(arg attack_continuity_enable)"/>
+        <arg name="attack_smoothing_time" value="$(arg attack_smoothing_time)"/>
+        <arg name="attack_max_offset_rate" value="$(arg attack_max_offset_rate)"/>
+        <arg name="attack_ramp_ctrl_pts" value="$(arg attack_ramp_ctrl_pts)"/>
+        <arg name="attack_ramp_power" value="$(arg attack_ramp_power)"/>
+        <arg name="attack_max_vel_check" value="$(arg attack_max_vel_check)"/>
+        <arg name="attack_max_acc_check" value="$(arg attack_max_acc_check)"/>
+        <arg name="attack_max_jerk_check" value="$(arg attack_max_jerk_check)"/>
+        <arg name="experiment_log_enable" value="$(arg experiment_log_enable)"/>
+        <arg name="experiment_log_file" value="$(arg experiment_log_file)"/>
+        <arg name="experiment_scenario" value="$(arg experiment_scenario)"/>
+        <arg name="experiment_seed" value="$(arg experiment_seed)"/>
+        <arg name="experiment_swarm_size" value="$(arg experiment_swarm_size)"/>
+        <arg name="experiment_attacker_count" value="$(arg experiment_attacker_count)"/>
+        <arg name="experiment_trial_id" value="$(arg experiment_trial_id)"/>
+        <arg name="experiment_map" value="$(arg experiment_map)"/>
+        <arg name="experiment_comm_radius" value="$(arg experiment_comm_radius)"/>
+        <arg name="experiment_sharing_freq" value="$(arg experiment_sharing_freq)"/>
+        <arg name="experiment_log_owner_drone_id" value="$(arg experiment_log_owner_drone_id)"/>
+        <arg name="experiment_per_uav_log_file" value="$(arg experiment_per_uav_log_file)"/>
+        <arg name="experiment_per_uav_log_enable" value="$(arg experiment_per_uav_log_enable)"/>
+        <arg name="experiment_timeseries_log_file" value="$(arg experiment_timeseries_log_file)"/>
+        <arg name="experiment_timeseries_log_enable" value="$(arg experiment_timeseries_log_enable)"/>
+        <arg name="experiment_timeseries_interval" value="$(arg experiment_timeseries_interval)"/>
+    </include>
+
+    <include file="$(find ego_planner)/launch/run_in_sim.launch">
+        <arg name="drone_id" value="2"/>
+
+        <arg name="init_x" value="-12.7"/>
+        <arg name="init_y" value="-12.3"/>
+         <arg name="init_z" value="0.1"/>
+
+        <arg name="target_x" value="12.0"/>
+        <arg name="target_y" value="7.0"/>
+        <arg name="target_z" value="1"/>
+
+        <arg name="map_size_x" value="$(arg map_size_x)"/>
+        <arg name="map_size_y" value="$(arg map_size_y)"/>
+        <arg name="map_size_z" value="$(arg map_size_z)"/>
+        <arg name="odom_topic" value="$(arg odom_topic)"/>
+
+        <arg name="malicious_drone_id" value="$(arg malicious_id)"/>
+        <arg name="mal_type" value="$(arg mal_type)"/>
+        <arg name="lambda_adv_swarm" value="$(arg lambda_adv_swarm)"/>
+        <arg name="broadcast_offset_x" value="$(arg broadcast_offset_x)"/>
+        <arg name="broadcast_offset_y" value="$(arg broadcast_offset_y)"/>
+        <arg name="broadcast_offset_z" value="$(arg broadcast_offset_z)"/>
+        <arg name="phantom_fake_drone_id" value="$(arg phantom_fake_drone_id)"/>
+        <arg name="phantom_shape" value="$(arg phantom_shape)"/>
+        <arg name="phantom_radius" value="$(arg phantom_radius)"/>
+        <arg name="phantom_samples" value="$(arg phantom_samples)"/>
+        <arg name="phantom_dt" value="$(arg phantom_dt)"/>
+        <arg name="phantom_z_offset" value="$(arg phantom_z_offset)"/>
+        <arg name="phantom_target_drone_id" value="$(arg phantom_target_drone_id)"/>
+        <arg name="phantom_time_offset" value="$(arg phantom_time_offset)"/>
+        <arg name="attack_enable" value="$(arg attack_enable)"/>
+        <arg name="attack_method" value="$(arg attack_method)"/>
+        <arg name="attack_method_id" value="$(arg attack_method_id)"/>
+        <arg name="attack_scenario" value="$(arg attack_scenario)"/>
+        <arg name="attack_scenario_id" value="$(arg attack_scenario_id)"/>
+        <arg name="attack_swarm_weight" value="$(arg attack_swarm_weight)"/>
+        <arg name="attack_scenario_weight" value="$(arg attack_scenario_weight)"/>
+        <arg name="attack_impact_distance_weight" value="$(arg attack_impact_distance_weight)"/>
+        <arg name="attack_offset_penalty_weight" value="$(arg attack_offset_penalty_weight)"/>
+        <arg name="attack_herding_weight" value="$(arg attack_herding_weight)"/>
+        <arg name="attack_trap_weight" value="$(arg attack_trap_weight)"/>
+        <arg name="attack_oscillation_weight" value="$(arg attack_oscillation_weight)"/>
+        <arg name="attack_herding_direction_x" value="$(arg attack_herding_direction_x)"/>
+        <arg name="attack_herding_direction_y" value="$(arg attack_herding_direction_y)"/>
+        <arg name="attack_herding_direction_z" value="$(arg attack_herding_direction_z)"/>
+        <arg name="attack_use_manual_trap_exit" value="$(arg attack_use_manual_trap_exit)"/>
+        <arg name="attack_trap_exit_x" value="$(arg attack_trap_exit_x)"/>
+        <arg name="attack_trap_exit_y" value="$(arg attack_trap_exit_y)"/>
+        <arg name="attack_trap_exit_z" value="$(arg attack_trap_exit_z)"/>
+        <arg name="attack_trap_exit_radius" value="$(arg attack_trap_exit_radius)"/>
+        <arg name="attack_use_manual_goal" value="$(arg attack_use_manual_goal)"/>
+        <arg name="attack_goal_x" value="$(arg attack_goal_x)"/>
+        <arg name="attack_goal_y" value="$(arg attack_goal_y)"/>
+        <arg name="attack_goal_z" value="$(arg attack_goal_z)"/>
+        <arg name="attack_goal_region_radius" value="$(arg attack_goal_region_radius)"/>
+        <arg name="attack_oscillation_period" value="$(arg attack_oscillation_period)"/>
+        <arg name="attack_malicious_drone_id" value="$(arg attack_malicious_drone_id)"/>
+        <arg name="attack_victim_drone_id" value="$(arg attack_victim_drone_id)"/>
+        <arg name="attack_phantom_fake_drone_id" value="$(arg attack_phantom_fake_drone_id)"/>
+        <arg name="attack_window_enable" value="$(arg attack_window_enable)"/>
+        <arg name="attack_start_time" value="$(arg attack_start_time)"/>
+        <arg name="attack_duration" value="$(arg attack_duration)"/>
+        <arg name="attack_max_offset_radius" value="$(arg attack_max_offset_radius)"/>
+        <arg name="attack_direction_samples" value="$(arg attack_direction_samples)"/>
+        <arg name="attack_radius_samples" value="$(arg attack_radius_samples)"/>
+        <arg name="attack_horizon" value="$(arg attack_horizon)"/>
+        <arg name="attack_dt" value="$(arg attack_dt)"/>
+        <arg name="attack_clearance" value="$(arg attack_clearance)"/>
+        <arg name="attack_continuity_enable" value="$(arg attack_continuity_enable)"/>
+        <arg name="attack_smoothing_time" value="$(arg attack_smoothing_time)"/>
+        <arg name="attack_max_offset_rate" value="$(arg attack_max_offset_rate)"/>
+        <arg name="attack_ramp_ctrl_pts" value="$(arg attack_ramp_ctrl_pts)"/>
+        <arg name="attack_ramp_power" value="$(arg attack_ramp_power)"/>
+        <arg name="attack_max_vel_check" value="$(arg attack_max_vel_check)"/>
+        <arg name="attack_max_acc_check" value="$(arg attack_max_acc_check)"/>
+        <arg name="attack_max_jerk_check" value="$(arg attack_max_jerk_check)"/>
+        <arg name="experiment_log_enable" value="$(arg experiment_log_enable)"/>
+        <arg name="experiment_log_file" value="$(arg experiment_log_file)"/>
+        <arg name="experiment_scenario" value="$(arg experiment_scenario)"/>
+        <arg name="experiment_seed" value="$(arg experiment_seed)"/>
+        <arg name="experiment_swarm_size" value="$(arg experiment_swarm_size)"/>
+        <arg name="experiment_attacker_count" value="$(arg experiment_attacker_count)"/>
+        <arg name="experiment_trial_id" value="$(arg experiment_trial_id)"/>
+        <arg name="experiment_map" value="$(arg experiment_map)"/>
+        <arg name="experiment_comm_radius" value="$(arg experiment_comm_radius)"/>
+        <arg name="experiment_sharing_freq" value="$(arg experiment_sharing_freq)"/>
+        <arg name="experiment_log_owner_drone_id" value="$(arg experiment_log_owner_drone_id)"/>
+        <arg name="experiment_per_uav_log_file" value="$(arg experiment_per_uav_log_file)"/>
+        <arg name="experiment_per_uav_log_enable" value="$(arg experiment_per_uav_log_enable)"/>
+        <arg name="experiment_timeseries_log_file" value="$(arg experiment_timeseries_log_file)"/>
+        <arg name="experiment_timeseries_log_enable" value="$(arg experiment_timeseries_log_enable)"/>
+        <arg name="experiment_timeseries_interval" value="$(arg experiment_timeseries_interval)"/>
+    </include>
+
+<!--    <include file="$(find ego_planner)/launch/run_in_sim.launch">
+        <arg name="drone_id" value="3"/>
+
+        <arg name="init_x" value="-20.0"/>
+        <arg name="init_y" value="-3.0"/>
+         <arg name="init_z" value="0.1"/>
+
+        <arg name="target_x" value="20.0"/>
+        <arg name="target_y" value="3.0"/>
+        <arg name="target_z" value="1"/>
+
+        <arg name="map_size_x" value="$(arg map_size_x)"/>
+        <arg name="map_size_y" value="$(arg map_size_y)"/>
+        <arg name="map_size_z" value="$(arg map_size_z)"/>
+        <arg name="odom_topic" value="$(arg odom_topic)"/>
+        
+        <arg name="malicious_drone_id" value="$(arg malicious_id)"/>
+        <arg name="mal_type" value="$(arg mal_type)"/>
+        <arg name="lambda_adv_swarm" value="$(arg lambda_adv_swarm)"/>
+        <arg name="broadcast_offset_x" value="$(arg broadcast_offset_x)"/>
+        <arg name="broadcast_offset_y" value="$(arg broadcast_offset_y)"/>
+        <arg name="broadcast_offset_z" value="$(arg broadcast_offset_z)"/>
+        <arg name="phantom_fake_drone_id" value="$(arg phantom_fake_drone_id)"/>
+        <arg name="phantom_shape" value="$(arg phantom_shape)"/>
+        <arg name="phantom_radius" value="$(arg phantom_radius)"/>
+        <arg name="phantom_samples" value="$(arg phantom_samples)"/>
+        <arg name="phantom_dt" value="$(arg phantom_dt)"/>
+        <arg name="phantom_z_offset" value="$(arg phantom_z_offset)"/>
+        <arg name="phantom_target_drone_id" value="$(arg phantom_target_drone_id)"/>
+        <arg name="phantom_time_offset" value="$(arg phantom_time_offset)"/>
+        <arg name="attack_enable" value="$(arg attack_enable)"/>
+        <arg name="attack_method" value="$(arg attack_method)"/>
+        <arg name="attack_method_id" value="$(arg attack_method_id)"/>
+        <arg name="attack_scenario" value="$(arg attack_scenario)"/>
+        <arg name="attack_scenario_id" value="$(arg attack_scenario_id)"/>
+        <arg name="attack_swarm_weight" value="$(arg attack_swarm_weight)"/>
+        <arg name="attack_scenario_weight" value="$(arg attack_scenario_weight)"/>
+        <arg name="attack_impact_distance_weight" value="$(arg attack_impact_distance_weight)"/>
+        <arg name="attack_offset_penalty_weight" value="$(arg attack_offset_penalty_weight)"/>
+        <arg name="attack_herding_weight" value="$(arg attack_herding_weight)"/>
+        <arg name="attack_trap_weight" value="$(arg attack_trap_weight)"/>
+        <arg name="attack_oscillation_weight" value="$(arg attack_oscillation_weight)"/>
+        <arg name="attack_herding_direction_x" value="$(arg attack_herding_direction_x)"/>
+        <arg name="attack_herding_direction_y" value="$(arg attack_herding_direction_y)"/>
+        <arg name="attack_herding_direction_z" value="$(arg attack_herding_direction_z)"/>
+        <arg name="attack_use_manual_trap_exit" value="$(arg attack_use_manual_trap_exit)"/>
+        <arg name="attack_trap_exit_x" value="$(arg attack_trap_exit_x)"/>
+        <arg name="attack_trap_exit_y" value="$(arg attack_trap_exit_y)"/>
+        <arg name="attack_trap_exit_z" value="$(arg attack_trap_exit_z)"/>
+        <arg name="attack_trap_exit_radius" value="$(arg attack_trap_exit_radius)"/>
+        <arg name="attack_use_manual_goal" value="$(arg attack_use_manual_goal)"/>
+        <arg name="attack_goal_x" value="$(arg attack_goal_x)"/>
+        <arg name="attack_goal_y" value="$(arg attack_goal_y)"/>
+        <arg name="attack_goal_z" value="$(arg attack_goal_z)"/>
+        <arg name="attack_goal_region_radius" value="$(arg attack_goal_region_radius)"/>
+        <arg name="attack_oscillation_period" value="$(arg attack_oscillation_period)"/>
+        <arg name="attack_malicious_drone_id" value="$(arg attack_malicious_drone_id)"/>
+        <arg name="attack_victim_drone_id" value="$(arg attack_victim_drone_id)"/>
+        <arg name="attack_phantom_fake_drone_id" value="$(arg attack_phantom_fake_drone_id)"/>
+        <arg name="attack_window_enable" value="$(arg attack_window_enable)"/>
+        <arg name="attack_start_time" value="$(arg attack_start_time)"/>
+        <arg name="attack_duration" value="$(arg attack_duration)"/>
+        <arg name="attack_max_offset_radius" value="$(arg attack_max_offset_radius)"/>
+        <arg name="attack_direction_samples" value="$(arg attack_direction_samples)"/>
+        <arg name="attack_radius_samples" value="$(arg attack_radius_samples)"/>
+        <arg name="attack_horizon" value="$(arg attack_horizon)"/>
+        <arg name="attack_dt" value="$(arg attack_dt)"/>
+        <arg name="attack_clearance" value="$(arg attack_clearance)"/>
+        <arg name="attack_continuity_enable" value="$(arg attack_continuity_enable)"/>
+        <arg name="attack_smoothing_time" value="$(arg attack_smoothing_time)"/>
+        <arg name="attack_max_offset_rate" value="$(arg attack_max_offset_rate)"/>
+        <arg name="attack_ramp_ctrl_pts" value="$(arg attack_ramp_ctrl_pts)"/>
+        <arg name="attack_ramp_power" value="$(arg attack_ramp_power)"/>
+        <arg name="attack_max_vel_check" value="$(arg attack_max_vel_check)"/>
+        <arg name="attack_max_acc_check" value="$(arg attack_max_acc_check)"/>
+        <arg name="attack_max_jerk_check" value="$(arg attack_max_jerk_check)"/>
+        <arg name="experiment_log_enable" value="$(arg experiment_log_enable)"/>
+        <arg name="experiment_log_file" value="$(arg experiment_log_file)"/>
+        <arg name="experiment_scenario" value="$(arg experiment_scenario)"/>
+        <arg name="experiment_seed" value="$(arg experiment_seed)"/>
+        <arg name="experiment_swarm_size" value="$(arg experiment_swarm_size)"/>
+        <arg name="experiment_attacker_count" value="$(arg experiment_attacker_count)"/>
+        <arg name="experiment_trial_id" value="$(arg experiment_trial_id)"/>
+        <arg name="experiment_map" value="$(arg experiment_map)"/>
+        <arg name="experiment_comm_radius" value="$(arg experiment_comm_radius)"/>
+        <arg name="experiment_sharing_freq" value="$(arg experiment_sharing_freq)"/>
+        <arg name="experiment_log_owner_drone_id" value="$(arg experiment_log_owner_drone_id)"/>
+        <arg name="experiment_per_uav_log_file" value="$(arg experiment_per_uav_log_file)"/>
+        <arg name="experiment_per_uav_log_enable" value="$(arg experiment_per_uav_log_enable)"/>
+        <arg name="experiment_timeseries_log_file" value="$(arg experiment_timeseries_log_file)"/>
+        <arg name="experiment_timeseries_log_enable" value="$(arg experiment_timeseries_log_enable)"/>
+        <arg name="experiment_timeseries_interval" value="$(arg experiment_timeseries_interval)"/>
+    </include>
+
+    <include file="$(find ego_planner)/launch/run_in_sim.launch">
+        <arg name="drone_id" value="4"/>
+
+        <arg name="init_x" value="-20.0"/>
+        <arg name="init_y" value="-1.0"/>
+         <arg name="init_z" value="0.1"/>
+
+        <arg name="target_x" value="20.0"/>
+        <arg name="target_y" value="1.0"/>
+        <arg name="target_z" value="1"/>
+
+        <arg name="map_size_x" value="$(arg map_size_x)"/>
+        <arg name="map_size_y" value="$(arg map_size_y)"/>
+        <arg name="map_size_z" value="$(arg map_size_z)"/>
+        <arg name="odom_topic" value="$(arg odom_topic)"/>
+        
+        <arg name="malicious_drone_id" value="$(arg malicious_id)"/>
+        <arg name="mal_type" value="$(arg mal_type)"/>
+        <arg name="lambda_adv_swarm" value="$(arg lambda_adv_swarm)"/>
+        <arg name="broadcast_offset_x" value="$(arg broadcast_offset_x)"/>
+        <arg name="broadcast_offset_y" value="$(arg broadcast_offset_y)"/>
+        <arg name="broadcast_offset_z" value="$(arg broadcast_offset_z)"/>
+        <arg name="phantom_fake_drone_id" value="$(arg phantom_fake_drone_id)"/>
+        <arg name="phantom_shape" value="$(arg phantom_shape)"/>
+        <arg name="phantom_radius" value="$(arg phantom_radius)"/>
+        <arg name="phantom_samples" value="$(arg phantom_samples)"/>
+        <arg name="phantom_dt" value="$(arg phantom_dt)"/>
+        <arg name="phantom_z_offset" value="$(arg phantom_z_offset)"/>
+        <arg name="phantom_target_drone_id" value="$(arg phantom_target_drone_id)"/>
+        <arg name="phantom_time_offset" value="$(arg phantom_time_offset)"/>
+        <arg name="attack_enable" value="$(arg attack_enable)"/>
+        <arg name="attack_method" value="$(arg attack_method)"/>
+        <arg name="attack_method_id" value="$(arg attack_method_id)"/>
+        <arg name="attack_scenario" value="$(arg attack_scenario)"/>
+        <arg name="attack_scenario_id" value="$(arg attack_scenario_id)"/>
+        <arg name="attack_swarm_weight" value="$(arg attack_swarm_weight)"/>
+        <arg name="attack_scenario_weight" value="$(arg attack_scenario_weight)"/>
+        <arg name="attack_impact_distance_weight" value="$(arg attack_impact_distance_weight)"/>
+        <arg name="attack_offset_penalty_weight" value="$(arg attack_offset_penalty_weight)"/>
+        <arg name="attack_herding_weight" value="$(arg attack_herding_weight)"/>
+        <arg name="attack_trap_weight" value="$(arg attack_trap_weight)"/>
+        <arg name="attack_oscillation_weight" value="$(arg attack_oscillation_weight)"/>
+        <arg name="attack_herding_direction_x" value="$(arg attack_herding_direction_x)"/>
+        <arg name="attack_herding_direction_y" value="$(arg attack_herding_direction_y)"/>
+        <arg name="attack_herding_direction_z" value="$(arg attack_herding_direction_z)"/>
+        <arg name="attack_use_manual_trap_exit" value="$(arg attack_use_manual_trap_exit)"/>
+        <arg name="attack_trap_exit_x" value="$(arg attack_trap_exit_x)"/>
+        <arg name="attack_trap_exit_y" value="$(arg attack_trap_exit_y)"/>
+        <arg name="attack_trap_exit_z" value="$(arg attack_trap_exit_z)"/>
+        <arg name="attack_trap_exit_radius" value="$(arg attack_trap_exit_radius)"/>
+        <arg name="attack_use_manual_goal" value="$(arg attack_use_manual_goal)"/>
+        <arg name="attack_goal_x" value="$(arg attack_goal_x)"/>
+        <arg name="attack_goal_y" value="$(arg attack_goal_y)"/>
+        <arg name="attack_goal_z" value="$(arg attack_goal_z)"/>
+        <arg name="attack_goal_region_radius" value="$(arg attack_goal_region_radius)"/>
+        <arg name="attack_oscillation_period" value="$(arg attack_oscillation_period)"/>
+        <arg name="attack_malicious_drone_id" value="$(arg attack_malicious_drone_id)"/>
+        <arg name="attack_victim_drone_id" value="$(arg attack_victim_drone_id)"/>
+        <arg name="attack_phantom_fake_drone_id" value="$(arg attack_phantom_fake_drone_id)"/>
+        <arg name="attack_window_enable" value="$(arg attack_window_enable)"/>
+        <arg name="attack_start_time" value="$(arg attack_start_time)"/>
+        <arg name="attack_duration" value="$(arg attack_duration)"/>
+        <arg name="attack_max_offset_radius" value="$(arg attack_max_offset_radius)"/>
+        <arg name="attack_direction_samples" value="$(arg attack_direction_samples)"/>
+        <arg name="attack_radius_samples" value="$(arg attack_radius_samples)"/>
+        <arg name="attack_horizon" value="$(arg attack_horizon)"/>
+        <arg name="attack_dt" value="$(arg attack_dt)"/>
+        <arg name="attack_clearance" value="$(arg attack_clearance)"/>
+        <arg name="attack_continuity_enable" value="$(arg attack_continuity_enable)"/>
+        <arg name="attack_smoothing_time" value="$(arg attack_smoothing_time)"/>
+        <arg name="attack_max_offset_rate" value="$(arg attack_max_offset_rate)"/>
+        <arg name="attack_ramp_ctrl_pts" value="$(arg attack_ramp_ctrl_pts)"/>
+        <arg name="attack_ramp_power" value="$(arg attack_ramp_power)"/>
+        <arg name="attack_max_vel_check" value="$(arg attack_max_vel_check)"/>
+        <arg name="attack_max_acc_check" value="$(arg attack_max_acc_check)"/>
+        <arg name="attack_max_jerk_check" value="$(arg attack_max_jerk_check)"/>
+        <arg name="experiment_log_enable" value="$(arg experiment_log_enable)"/>
+        <arg name="experiment_log_file" value="$(arg experiment_log_file)"/>
+        <arg name="experiment_scenario" value="$(arg experiment_scenario)"/>
+        <arg name="experiment_seed" value="$(arg experiment_seed)"/>
+        <arg name="experiment_swarm_size" value="$(arg experiment_swarm_size)"/>
+        <arg name="experiment_attacker_count" value="$(arg experiment_attacker_count)"/>
+        <arg name="experiment_trial_id" value="$(arg experiment_trial_id)"/>
+        <arg name="experiment_map" value="$(arg experiment_map)"/>
+        <arg name="experiment_comm_radius" value="$(arg experiment_comm_radius)"/>
+        <arg name="experiment_sharing_freq" value="$(arg experiment_sharing_freq)"/>
+        <arg name="experiment_log_owner_drone_id" value="$(arg experiment_log_owner_drone_id)"/>
+        <arg name="experiment_per_uav_log_file" value="$(arg experiment_per_uav_log_file)"/>
+        <arg name="experiment_per_uav_log_enable" value="$(arg experiment_per_uav_log_enable)"/>
+        <arg name="experiment_timeseries_log_file" value="$(arg experiment_timeseries_log_file)"/>
+        <arg name="experiment_timeseries_log_enable" value="$(arg experiment_timeseries_log_enable)"/>
+        <arg name="experiment_timeseries_interval" value="$(arg experiment_timeseries_interval)"/>
+    </include>
+
+    <include file="$(find ego_planner)/launch/run_in_sim.launch">
+        <arg name="drone_id" value="5"/>
+
+        <arg name="init_x" value="-20.0"/>
+        <arg name="init_y" value="1.0"/>
+         <arg name="init_z" value="0.1"/>
+
+        <arg name="target_x" value="20.0"/>
+        <arg name="target_y" value="-1.0"/>
+        <arg name="target_z" value="1"/>
+
+        <arg name="map_size_x" value="$(arg map_size_x)"/>
+        <arg name="map_size_y" value="$(arg map_size_y)"/>
+        <arg name="map_size_z" value="$(arg map_size_z)"/>
+        <arg name="odom_topic" value="$(arg odom_topic)"/>
+        
+        <arg name="malicious_drone_id" value="$(arg malicious_id)"/>
+        <arg name="mal_type" value="$(arg mal_type)"/>
+        <arg name="lambda_adv_swarm" value="$(arg lambda_adv_swarm)"/>
+        <arg name="broadcast_offset_x" value="$(arg broadcast_offset_x)"/>
+        <arg name="broadcast_offset_y" value="$(arg broadcast_offset_y)"/>
+        <arg name="broadcast_offset_z" value="$(arg broadcast_offset_z)"/>
+        <arg name="phantom_fake_drone_id" value="$(arg phantom_fake_drone_id)"/>
+        <arg name="phantom_shape" value="$(arg phantom_shape)"/>
+        <arg name="phantom_radius" value="$(arg phantom_radius)"/>
+        <arg name="phantom_samples" value="$(arg phantom_samples)"/>
+        <arg name="phantom_dt" value="$(arg phantom_dt)"/>
+        <arg name="phantom_z_offset" value="$(arg phantom_z_offset)"/>
+        <arg name="phantom_target_drone_id" value="$(arg phantom_target_drone_id)"/>
+        <arg name="phantom_time_offset" value="$(arg phantom_time_offset)"/>
+        <arg name="attack_enable" value="$(arg attack_enable)"/>
+        <arg name="attack_method" value="$(arg attack_method)"/>
+        <arg name="attack_method_id" value="$(arg attack_method_id)"/>
+        <arg name="attack_scenario" value="$(arg attack_scenario)"/>
+        <arg name="attack_scenario_id" value="$(arg attack_scenario_id)"/>
+        <arg name="attack_swarm_weight" value="$(arg attack_swarm_weight)"/>
+        <arg name="attack_scenario_weight" value="$(arg attack_scenario_weight)"/>
+        <arg name="attack_impact_distance_weight" value="$(arg attack_impact_distance_weight)"/>
+        <arg name="attack_offset_penalty_weight" value="$(arg attack_offset_penalty_weight)"/>
+        <arg name="attack_herding_weight" value="$(arg attack_herding_weight)"/>
+        <arg name="attack_trap_weight" value="$(arg attack_trap_weight)"/>
+        <arg name="attack_oscillation_weight" value="$(arg attack_oscillation_weight)"/>
+        <arg name="attack_herding_direction_x" value="$(arg attack_herding_direction_x)"/>
+        <arg name="attack_herding_direction_y" value="$(arg attack_herding_direction_y)"/>
+        <arg name="attack_herding_direction_z" value="$(arg attack_herding_direction_z)"/>
+        <arg name="attack_use_manual_trap_exit" value="$(arg attack_use_manual_trap_exit)"/>
+        <arg name="attack_trap_exit_x" value="$(arg attack_trap_exit_x)"/>
+        <arg name="attack_trap_exit_y" value="$(arg attack_trap_exit_y)"/>
+        <arg name="attack_trap_exit_z" value="$(arg attack_trap_exit_z)"/>
+        <arg name="attack_trap_exit_radius" value="$(arg attack_trap_exit_radius)"/>
+        <arg name="attack_use_manual_goal" value="$(arg attack_use_manual_goal)"/>
+        <arg name="attack_goal_x" value="$(arg attack_goal_x)"/>
+        <arg name="attack_goal_y" value="$(arg attack_goal_y)"/>
+        <arg name="attack_goal_z" value="$(arg attack_goal_z)"/>
+        <arg name="attack_goal_region_radius" value="$(arg attack_goal_region_radius)"/>
+        <arg name="attack_oscillation_period" value="$(arg attack_oscillation_period)"/>
+        <arg name="attack_malicious_drone_id" value="$(arg attack_malicious_drone_id)"/>
+        <arg name="attack_victim_drone_id" value="$(arg attack_victim_drone_id)"/>
+        <arg name="attack_phantom_fake_drone_id" value="$(arg attack_phantom_fake_drone_id)"/>
+        <arg name="attack_window_enable" value="$(arg attack_window_enable)"/>
+        <arg name="attack_start_time" value="$(arg attack_start_time)"/>
+        <arg name="attack_duration" value="$(arg attack_duration)"/>
+        <arg name="attack_max_offset_radius" value="$(arg attack_max_offset_radius)"/>
+        <arg name="attack_direction_samples" value="$(arg attack_direction_samples)"/>
+        <arg name="attack_radius_samples" value="$(arg attack_radius_samples)"/>
+        <arg name="attack_horizon" value="$(arg attack_horizon)"/>
+        <arg name="attack_dt" value="$(arg attack_dt)"/>
+        <arg name="attack_clearance" value="$(arg attack_clearance)"/>
+        <arg name="attack_continuity_enable" value="$(arg attack_continuity_enable)"/>
+        <arg name="attack_smoothing_time" value="$(arg attack_smoothing_time)"/>
+        <arg name="attack_max_offset_rate" value="$(arg attack_max_offset_rate)"/>
+        <arg name="attack_ramp_ctrl_pts" value="$(arg attack_ramp_ctrl_pts)"/>
+        <arg name="attack_ramp_power" value="$(arg attack_ramp_power)"/>
+        <arg name="attack_max_vel_check" value="$(arg attack_max_vel_check)"/>
+        <arg name="attack_max_acc_check" value="$(arg attack_max_acc_check)"/>
+        <arg name="attack_max_jerk_check" value="$(arg attack_max_jerk_check)"/>
+        <arg name="experiment_log_enable" value="$(arg experiment_log_enable)"/>
+        <arg name="experiment_log_file" value="$(arg experiment_log_file)"/>
+        <arg name="experiment_scenario" value="$(arg experiment_scenario)"/>
+        <arg name="experiment_seed" value="$(arg experiment_seed)"/>
+        <arg name="experiment_swarm_size" value="$(arg experiment_swarm_size)"/>
+        <arg name="experiment_attacker_count" value="$(arg experiment_attacker_count)"/>
+        <arg name="experiment_trial_id" value="$(arg experiment_trial_id)"/>
+        <arg name="experiment_map" value="$(arg experiment_map)"/>
+        <arg name="experiment_comm_radius" value="$(arg experiment_comm_radius)"/>
+        <arg name="experiment_sharing_freq" value="$(arg experiment_sharing_freq)"/>
+        <arg name="experiment_log_owner_drone_id" value="$(arg experiment_log_owner_drone_id)"/>
+        <arg name="experiment_per_uav_log_file" value="$(arg experiment_per_uav_log_file)"/>
+        <arg name="experiment_per_uav_log_enable" value="$(arg experiment_per_uav_log_enable)"/>
+        <arg name="experiment_timeseries_log_file" value="$(arg experiment_timeseries_log_file)"/>
+        <arg name="experiment_timeseries_log_enable" value="$(arg experiment_timeseries_log_enable)"/>
+        <arg name="experiment_timeseries_interval" value="$(arg experiment_timeseries_interval)"/>
+    </include>
+
+    <include file="$(find ego_planner)/launch/run_in_sim.launch">
+        <arg name="drone_id" value="6"/>
+
+        <arg name="init_x" value="-20.0"/>
+        <arg name="init_y" value="3.0"/>
+         <arg name="init_z" value="0.1"/>
+
+        <arg name="target_x" value="20.0"/>
+        <arg name="target_y" value="-3.0"/>
+        <arg name="target_z" value="1"/>
+
+        <arg name="map_size_x" value="$(arg map_size_x)"/>
+        <arg name="map_size_y" value="$(arg map_size_y)"/>
+        <arg name="map_size_z" value="$(arg map_size_z)"/>
+        <arg name="odom_topic" value="$(arg odom_topic)"/>
+        
+        <arg name="malicious_drone_id" value="$(arg malicious_id)"/>
+        <arg name="mal_type" value="$(arg mal_type)"/>
+        <arg name="lambda_adv_swarm" value="$(arg lambda_adv_swarm)"/>
+        <arg name="broadcast_offset_x" value="$(arg broadcast_offset_x)"/>
+        <arg name="broadcast_offset_y" value="$(arg broadcast_offset_y)"/>
+        <arg name="broadcast_offset_z" value="$(arg broadcast_offset_z)"/>
+        <arg name="phantom_fake_drone_id" value="$(arg phantom_fake_drone_id)"/>
+        <arg name="phantom_shape" value="$(arg phantom_shape)"/>
+        <arg name="phantom_radius" value="$(arg phantom_radius)"/>
+        <arg name="phantom_samples" value="$(arg phantom_samples)"/>
+        <arg name="phantom_dt" value="$(arg phantom_dt)"/>
+        <arg name="phantom_z_offset" value="$(arg phantom_z_offset)"/>
+        <arg name="phantom_target_drone_id" value="$(arg phantom_target_drone_id)"/>
+        <arg name="phantom_time_offset" value="$(arg phantom_time_offset)"/>
+        <arg name="attack_enable" value="$(arg attack_enable)"/>
+        <arg name="attack_method" value="$(arg attack_method)"/>
+        <arg name="attack_method_id" value="$(arg attack_method_id)"/>
+        <arg name="attack_scenario" value="$(arg attack_scenario)"/>
+        <arg name="attack_scenario_id" value="$(arg attack_scenario_id)"/>
+        <arg name="attack_swarm_weight" value="$(arg attack_swarm_weight)"/>
+        <arg name="attack_scenario_weight" value="$(arg attack_scenario_weight)"/>
+        <arg name="attack_impact_distance_weight" value="$(arg attack_impact_distance_weight)"/>
+        <arg name="attack_offset_penalty_weight" value="$(arg attack_offset_penalty_weight)"/>
+        <arg name="attack_herding_weight" value="$(arg attack_herding_weight)"/>
+        <arg name="attack_trap_weight" value="$(arg attack_trap_weight)"/>
+        <arg name="attack_oscillation_weight" value="$(arg attack_oscillation_weight)"/>
+        <arg name="attack_herding_direction_x" value="$(arg attack_herding_direction_x)"/>
+        <arg name="attack_herding_direction_y" value="$(arg attack_herding_direction_y)"/>
+        <arg name="attack_herding_direction_z" value="$(arg attack_herding_direction_z)"/>
+        <arg name="attack_use_manual_trap_exit" value="$(arg attack_use_manual_trap_exit)"/>
+        <arg name="attack_trap_exit_x" value="$(arg attack_trap_exit_x)"/>
+        <arg name="attack_trap_exit_y" value="$(arg attack_trap_exit_y)"/>
+        <arg name="attack_trap_exit_z" value="$(arg attack_trap_exit_z)"/>
+        <arg name="attack_trap_exit_radius" value="$(arg attack_trap_exit_radius)"/>
+        <arg name="attack_use_manual_goal" value="$(arg attack_use_manual_goal)"/>
+        <arg name="attack_goal_x" value="$(arg attack_goal_x)"/>
+        <arg name="attack_goal_y" value="$(arg attack_goal_y)"/>
+        <arg name="attack_goal_z" value="$(arg attack_goal_z)"/>
+        <arg name="attack_goal_region_radius" value="$(arg attack_goal_region_radius)"/>
+        <arg name="attack_oscillation_period" value="$(arg attack_oscillation_period)"/>
+        <arg name="attack_malicious_drone_id" value="$(arg attack_malicious_drone_id)"/>
+        <arg name="attack_victim_drone_id" value="$(arg attack_victim_drone_id)"/>
+        <arg name="attack_phantom_fake_drone_id" value="$(arg attack_phantom_fake_drone_id)"/>
+        <arg name="attack_window_enable" value="$(arg attack_window_enable)"/>
+        <arg name="attack_start_time" value="$(arg attack_start_time)"/>
+        <arg name="attack_duration" value="$(arg attack_duration)"/>
+        <arg name="attack_max_offset_radius" value="$(arg attack_max_offset_radius)"/>
+        <arg name="attack_direction_samples" value="$(arg attack_direction_samples)"/>
+        <arg name="attack_radius_samples" value="$(arg attack_radius_samples)"/>
+        <arg name="attack_horizon" value="$(arg attack_horizon)"/>
+        <arg name="attack_dt" value="$(arg attack_dt)"/>
+        <arg name="attack_clearance" value="$(arg attack_clearance)"/>
+        <arg name="attack_continuity_enable" value="$(arg attack_continuity_enable)"/>
+        <arg name="attack_smoothing_time" value="$(arg attack_smoothing_time)"/>
+        <arg name="attack_max_offset_rate" value="$(arg attack_max_offset_rate)"/>
+        <arg name="attack_ramp_ctrl_pts" value="$(arg attack_ramp_ctrl_pts)"/>
+        <arg name="attack_ramp_power" value="$(arg attack_ramp_power)"/>
+        <arg name="attack_max_vel_check" value="$(arg attack_max_vel_check)"/>
+        <arg name="attack_max_acc_check" value="$(arg attack_max_acc_check)"/>
+        <arg name="attack_max_jerk_check" value="$(arg attack_max_jerk_check)"/>
+        <arg name="experiment_log_enable" value="$(arg experiment_log_enable)"/>
+        <arg name="experiment_log_file" value="$(arg experiment_log_file)"/>
+        <arg name="experiment_scenario" value="$(arg experiment_scenario)"/>
+        <arg name="experiment_seed" value="$(arg experiment_seed)"/>
+        <arg name="experiment_swarm_size" value="$(arg experiment_swarm_size)"/>
+        <arg name="experiment_attacker_count" value="$(arg experiment_attacker_count)"/>
+        <arg name="experiment_trial_id" value="$(arg experiment_trial_id)"/>
+        <arg name="experiment_map" value="$(arg experiment_map)"/>
+        <arg name="experiment_comm_radius" value="$(arg experiment_comm_radius)"/>
+        <arg name="experiment_sharing_freq" value="$(arg experiment_sharing_freq)"/>
+        <arg name="experiment_log_owner_drone_id" value="$(arg experiment_log_owner_drone_id)"/>
+        <arg name="experiment_per_uav_log_file" value="$(arg experiment_per_uav_log_file)"/>
+        <arg name="experiment_per_uav_log_enable" value="$(arg experiment_per_uav_log_enable)"/>
+        <arg name="experiment_timeseries_log_file" value="$(arg experiment_timeseries_log_file)"/>
+        <arg name="experiment_timeseries_log_enable" value="$(arg experiment_timeseries_log_enable)"/>
+        <arg name="experiment_timeseries_interval" value="$(arg experiment_timeseries_interval)"/>
+    </include>
+
+    <include file="$(find ego_planner)/launch/run_in_sim.launch">
+        <arg name="drone_id" value="7"/>
+
+        <arg name="init_x" value="-20.0"/>
+        <arg name="init_y" value="5.0"/>
+         <arg name="init_z" value="0.1"/>
+
+        <arg name="target_x" value="20.0"/>
+        <arg name="target_y" value="-5.0"/>
+        <arg name="target_z" value="1"/>
+
+        <arg name="map_size_x" value="$(arg map_size_x)"/>
+        <arg name="map_size_y" value="$(arg map_size_y)"/>
+        <arg name="map_size_z" value="$(arg map_size_z)"/>
+        <arg name="odom_topic" value="$(arg odom_topic)"/>
+        
+        <arg name="malicious_drone_id" value="$(arg malicious_id)"/>
+        <arg name="mal_type" value="$(arg mal_type)"/>
+        <arg name="lambda_adv_swarm" value="$(arg lambda_adv_swarm)"/>
+        <arg name="broadcast_offset_x" value="$(arg broadcast_offset_x)"/>
+        <arg name="broadcast_offset_y" value="$(arg broadcast_offset_y)"/>
+        <arg name="broadcast_offset_z" value="$(arg broadcast_offset_z)"/>
+        <arg name="phantom_fake_drone_id" value="$(arg phantom_fake_drone_id)"/>
+        <arg name="phantom_shape" value="$(arg phantom_shape)"/>
+        <arg name="phantom_radius" value="$(arg phantom_radius)"/>
+        <arg name="phantom_samples" value="$(arg phantom_samples)"/>
+        <arg name="phantom_dt" value="$(arg phantom_dt)"/>
+        <arg name="phantom_z_offset" value="$(arg phantom_z_offset)"/>
+        <arg name="phantom_target_drone_id" value="$(arg phantom_target_drone_id)"/>
+        <arg name="phantom_time_offset" value="$(arg phantom_time_offset)"/>
+        <arg name="attack_enable" value="$(arg attack_enable)"/>
+        <arg name="attack_method" value="$(arg attack_method)"/>
+        <arg name="attack_method_id" value="$(arg attack_method_id)"/>
+        <arg name="attack_scenario" value="$(arg attack_scenario)"/>
+        <arg name="attack_scenario_id" value="$(arg attack_scenario_id)"/>
+        <arg name="attack_swarm_weight" value="$(arg attack_swarm_weight)"/>
+        <arg name="attack_scenario_weight" value="$(arg attack_scenario_weight)"/>
+        <arg name="attack_impact_distance_weight" value="$(arg attack_impact_distance_weight)"/>
+        <arg name="attack_offset_penalty_weight" value="$(arg attack_offset_penalty_weight)"/>
+        <arg name="attack_herding_weight" value="$(arg attack_herding_weight)"/>
+        <arg name="attack_trap_weight" value="$(arg attack_trap_weight)"/>
+        <arg name="attack_oscillation_weight" value="$(arg attack_oscillation_weight)"/>
+        <arg name="attack_herding_direction_x" value="$(arg attack_herding_direction_x)"/>
+        <arg name="attack_herding_direction_y" value="$(arg attack_herding_direction_y)"/>
+        <arg name="attack_herding_direction_z" value="$(arg attack_herding_direction_z)"/>
+        <arg name="attack_use_manual_trap_exit" value="$(arg attack_use_manual_trap_exit)"/>
+        <arg name="attack_trap_exit_x" value="$(arg attack_trap_exit_x)"/>
+        <arg name="attack_trap_exit_y" value="$(arg attack_trap_exit_y)"/>
+        <arg name="attack_trap_exit_z" value="$(arg attack_trap_exit_z)"/>
+        <arg name="attack_trap_exit_radius" value="$(arg attack_trap_exit_radius)"/>
+        <arg name="attack_use_manual_goal" value="$(arg attack_use_manual_goal)"/>
+        <arg name="attack_goal_x" value="$(arg attack_goal_x)"/>
+        <arg name="attack_goal_y" value="$(arg attack_goal_y)"/>
+        <arg name="attack_goal_z" value="$(arg attack_goal_z)"/>
+        <arg name="attack_goal_region_radius" value="$(arg attack_goal_region_radius)"/>
+        <arg name="attack_oscillation_period" value="$(arg attack_oscillation_period)"/>
+        <arg name="attack_malicious_drone_id" value="$(arg attack_malicious_drone_id)"/>
+        <arg name="attack_victim_drone_id" value="$(arg attack_victim_drone_id)"/>
+        <arg name="attack_phantom_fake_drone_id" value="$(arg attack_phantom_fake_drone_id)"/>
+        <arg name="attack_window_enable" value="$(arg attack_window_enable)"/>
+        <arg name="attack_start_time" value="$(arg attack_start_time)"/>
+        <arg name="attack_duration" value="$(arg attack_duration)"/>
+        <arg name="attack_max_offset_radius" value="$(arg attack_max_offset_radius)"/>
+        <arg name="attack_direction_samples" value="$(arg attack_direction_samples)"/>
+        <arg name="attack_radius_samples" value="$(arg attack_radius_samples)"/>
+        <arg name="attack_horizon" value="$(arg attack_horizon)"/>
+        <arg name="attack_dt" value="$(arg attack_dt)"/>
+        <arg name="attack_clearance" value="$(arg attack_clearance)"/>
+        <arg name="attack_continuity_enable" value="$(arg attack_continuity_enable)"/>
+        <arg name="attack_smoothing_time" value="$(arg attack_smoothing_time)"/>
+        <arg name="attack_max_offset_rate" value="$(arg attack_max_offset_rate)"/>
+        <arg name="attack_ramp_ctrl_pts" value="$(arg attack_ramp_ctrl_pts)"/>
+        <arg name="attack_ramp_power" value="$(arg attack_ramp_power)"/>
+        <arg name="attack_max_vel_check" value="$(arg attack_max_vel_check)"/>
+        <arg name="attack_max_acc_check" value="$(arg attack_max_acc_check)"/>
+        <arg name="attack_max_jerk_check" value="$(arg attack_max_jerk_check)"/>
+        <arg name="experiment_log_enable" value="$(arg experiment_log_enable)"/>
+        <arg name="experiment_log_file" value="$(arg experiment_log_file)"/>
+        <arg name="experiment_scenario" value="$(arg experiment_scenario)"/>
+        <arg name="experiment_seed" value="$(arg experiment_seed)"/>
+        <arg name="experiment_swarm_size" value="$(arg experiment_swarm_size)"/>
+        <arg name="experiment_attacker_count" value="$(arg experiment_attacker_count)"/>
+        <arg name="experiment_trial_id" value="$(arg experiment_trial_id)"/>
+        <arg name="experiment_map" value="$(arg experiment_map)"/>
+        <arg name="experiment_comm_radius" value="$(arg experiment_comm_radius)"/>
+        <arg name="experiment_sharing_freq" value="$(arg experiment_sharing_freq)"/>
+        <arg name="experiment_log_owner_drone_id" value="$(arg experiment_log_owner_drone_id)"/>
+        <arg name="experiment_per_uav_log_file" value="$(arg experiment_per_uav_log_file)"/>
+        <arg name="experiment_per_uav_log_enable" value="$(arg experiment_per_uav_log_enable)"/>
+        <arg name="experiment_timeseries_log_file" value="$(arg experiment_timeseries_log_file)"/>
+        <arg name="experiment_timeseries_log_enable" value="$(arg experiment_timeseries_log_enable)"/>
+        <arg name="experiment_timeseries_interval" value="$(arg experiment_timeseries_interval)"/>
+    </include>
+
+    <include file="$(find ego_planner)/launch/run_in_sim.launch">
+        <arg name="drone_id" value="8"/>
+
+        <arg name="init_x" value="-20.0"/>
+        <arg name="init_y" value="7.0"/>
+         <arg name="init_z" value="0.1"/>
+
+        <arg name="target_x" value="20.0"/>
+        <arg name="target_y" value="-7.0"/>
+        <arg name="target_z" value="1"/>
+
+        <arg name="map_size_x" value="$(arg map_size_x)"/>
+        <arg name="map_size_y" value="$(arg map_size_y)"/>
+        <arg name="map_size_z" value="$(arg map_size_z)"/>
+        <arg name="odom_topic" value="$(arg odom_topic)"/>
+        
+        <arg name="malicious_drone_id" value="$(arg malicious_id)"/>
+        <arg name="mal_type" value="$(arg mal_type)"/>
+        <arg name="lambda_adv_swarm" value="$(arg lambda_adv_swarm)"/>
+        <arg name="broadcast_offset_x" value="$(arg broadcast_offset_x)"/>
+        <arg name="broadcast_offset_y" value="$(arg broadcast_offset_y)"/>
+        <arg name="broadcast_offset_z" value="$(arg broadcast_offset_z)"/>
+        <arg name="phantom_fake_drone_id" value="$(arg phantom_fake_drone_id)"/>
+        <arg name="phantom_shape" value="$(arg phantom_shape)"/>
+        <arg name="phantom_radius" value="$(arg phantom_radius)"/>
+        <arg name="phantom_samples" value="$(arg phantom_samples)"/>
+        <arg name="phantom_dt" value="$(arg phantom_dt)"/>
+        <arg name="phantom_z_offset" value="$(arg phantom_z_offset)"/>
+        <arg name="phantom_target_drone_id" value="$(arg phantom_target_drone_id)"/>
+        <arg name="phantom_time_offset" value="$(arg phantom_time_offset)"/>
+        <arg name="attack_enable" value="$(arg attack_enable)"/>
+        <arg name="attack_method" value="$(arg attack_method)"/>
+        <arg name="attack_method_id" value="$(arg attack_method_id)"/>
+        <arg name="attack_scenario" value="$(arg attack_scenario)"/>
+        <arg name="attack_scenario_id" value="$(arg attack_scenario_id)"/>
+        <arg name="attack_swarm_weight" value="$(arg attack_swarm_weight)"/>
+        <arg name="attack_scenario_weight" value="$(arg attack_scenario_weight)"/>
+        <arg name="attack_impact_distance_weight" value="$(arg attack_impact_distance_weight)"/>
+        <arg name="attack_offset_penalty_weight" value="$(arg attack_offset_penalty_weight)"/>
+        <arg name="attack_herding_weight" value="$(arg attack_herding_weight)"/>
+        <arg name="attack_trap_weight" value="$(arg attack_trap_weight)"/>
+        <arg name="attack_oscillation_weight" value="$(arg attack_oscillation_weight)"/>
+        <arg name="attack_herding_direction_x" value="$(arg attack_herding_direction_x)"/>
+        <arg name="attack_herding_direction_y" value="$(arg attack_herding_direction_y)"/>
+        <arg name="attack_herding_direction_z" value="$(arg attack_herding_direction_z)"/>
+        <arg name="attack_use_manual_trap_exit" value="$(arg attack_use_manual_trap_exit)"/>
+        <arg name="attack_trap_exit_x" value="$(arg attack_trap_exit_x)"/>
+        <arg name="attack_trap_exit_y" value="$(arg attack_trap_exit_y)"/>
+        <arg name="attack_trap_exit_z" value="$(arg attack_trap_exit_z)"/>
+        <arg name="attack_trap_exit_radius" value="$(arg attack_trap_exit_radius)"/>
+        <arg name="attack_use_manual_goal" value="$(arg attack_use_manual_goal)"/>
+        <arg name="attack_goal_x" value="$(arg attack_goal_x)"/>
+        <arg name="attack_goal_y" value="$(arg attack_goal_y)"/>
+        <arg name="attack_goal_z" value="$(arg attack_goal_z)"/>
+        <arg name="attack_goal_region_radius" value="$(arg attack_goal_region_radius)"/>
+        <arg name="attack_oscillation_period" value="$(arg attack_oscillation_period)"/>
+        <arg name="attack_malicious_drone_id" value="$(arg attack_malicious_drone_id)"/>
+        <arg name="attack_victim_drone_id" value="$(arg attack_victim_drone_id)"/>
+        <arg name="attack_phantom_fake_drone_id" value="$(arg attack_phantom_fake_drone_id)"/>
+        <arg name="attack_window_enable" value="$(arg attack_window_enable)"/>
+        <arg name="attack_start_time" value="$(arg attack_start_time)"/>
+        <arg name="attack_duration" value="$(arg attack_duration)"/>
+        <arg name="attack_max_offset_radius" value="$(arg attack_max_offset_radius)"/>
+        <arg name="attack_direction_samples" value="$(arg attack_direction_samples)"/>
+        <arg name="attack_radius_samples" value="$(arg attack_radius_samples)"/>
+        <arg name="attack_horizon" value="$(arg attack_horizon)"/>
+        <arg name="attack_dt" value="$(arg attack_dt)"/>
+        <arg name="attack_clearance" value="$(arg attack_clearance)"/>
+        <arg name="attack_continuity_enable" value="$(arg attack_continuity_enable)"/>
+        <arg name="attack_smoothing_time" value="$(arg attack_smoothing_time)"/>
+        <arg name="attack_max_offset_rate" value="$(arg attack_max_offset_rate)"/>
+        <arg name="attack_ramp_ctrl_pts" value="$(arg attack_ramp_ctrl_pts)"/>
+        <arg name="attack_ramp_power" value="$(arg attack_ramp_power)"/>
+        <arg name="attack_max_vel_check" value="$(arg attack_max_vel_check)"/>
+        <arg name="attack_max_acc_check" value="$(arg attack_max_acc_check)"/>
+        <arg name="attack_max_jerk_check" value="$(arg attack_max_jerk_check)"/>
+        <arg name="experiment_log_enable" value="$(arg experiment_log_enable)"/>
+        <arg name="experiment_log_file" value="$(arg experiment_log_file)"/>
+        <arg name="experiment_scenario" value="$(arg experiment_scenario)"/>
+        <arg name="experiment_seed" value="$(arg experiment_seed)"/>
+        <arg name="experiment_swarm_size" value="$(arg experiment_swarm_size)"/>
+        <arg name="experiment_attacker_count" value="$(arg experiment_attacker_count)"/>
+        <arg name="experiment_trial_id" value="$(arg experiment_trial_id)"/>
+        <arg name="experiment_map" value="$(arg experiment_map)"/>
+        <arg name="experiment_comm_radius" value="$(arg experiment_comm_radius)"/>
+        <arg name="experiment_sharing_freq" value="$(arg experiment_sharing_freq)"/>
+        <arg name="experiment_log_owner_drone_id" value="$(arg experiment_log_owner_drone_id)"/>
+        <arg name="experiment_per_uav_log_file" value="$(arg experiment_per_uav_log_file)"/>
+        <arg name="experiment_per_uav_log_enable" value="$(arg experiment_per_uav_log_enable)"/>
+        <arg name="experiment_timeseries_log_file" value="$(arg experiment_timeseries_log_file)"/>
+        <arg name="experiment_timeseries_log_enable" value="$(arg experiment_timeseries_log_enable)"/>
+        <arg name="experiment_timeseries_interval" value="$(arg experiment_timeseries_interval)"/>
+    </include>
+
+    <include file="$(find ego_planner)/launch/run_in_sim.launch">
+        <arg name="drone_id" value="9"/>
+
+        <arg name="init_x" value="-20.0"/>
+        <arg name="init_y" value="9.0"/>
+         <arg name="init_z" value="0.1"/>
+
+        <arg name="target_x" value="20.0"/>
+        <arg name="target_y" value="-9.0"/>
+        <arg name="target_z" value="1"/>
+
+        <arg name="map_size_x" value="$(arg map_size_x)"/>
+        <arg name="map_size_y" value="$(arg map_size_y)"/>
+        <arg name="map_size_z" value="$(arg map_size_z)"/>
+        <arg name="odom_topic" value="$(arg odom_topic)"/>
+        
+        <arg name="malicious_drone_id" value="$(arg malicious_id)"/>
+        <arg name="mal_type" value="$(arg mal_type)"/>
+        <arg name="lambda_adv_swarm" value="$(arg lambda_adv_swarm)"/>
+        <arg name="broadcast_offset_x" value="$(arg broadcast_offset_x)"/>
+        <arg name="broadcast_offset_y" value="$(arg broadcast_offset_y)"/>
+        <arg name="broadcast_offset_z" value="$(arg broadcast_offset_z)"/>
+        <arg name="phantom_fake_drone_id" value="$(arg phantom_fake_drone_id)"/>
+        <arg name="phantom_shape" value="$(arg phantom_shape)"/>
+        <arg name="phantom_radius" value="$(arg phantom_radius)"/>
+        <arg name="phantom_samples" value="$(arg phantom_samples)"/>
+        <arg name="phantom_dt" value="$(arg phantom_dt)"/>
+        <arg name="phantom_z_offset" value="$(arg phantom_z_offset)"/>
+        <arg name="phantom_target_drone_id" value="$(arg phantom_target_drone_id)"/>
+        <arg name="phantom_time_offset" value="$(arg phantom_time_offset)"/>
+        <arg name="attack_enable" value="$(arg attack_enable)"/>
+        <arg name="attack_method" value="$(arg attack_method)"/>
+        <arg name="attack_method_id" value="$(arg attack_method_id)"/>
+        <arg name="attack_scenario" value="$(arg attack_scenario)"/>
+        <arg name="attack_scenario_id" value="$(arg attack_scenario_id)"/>
+        <arg name="attack_swarm_weight" value="$(arg attack_swarm_weight)"/>
+        <arg name="attack_scenario_weight" value="$(arg attack_scenario_weight)"/>
+        <arg name="attack_impact_distance_weight" value="$(arg attack_impact_distance_weight)"/>
+        <arg name="attack_offset_penalty_weight" value="$(arg attack_offset_penalty_weight)"/>
+        <arg name="attack_herding_weight" value="$(arg attack_herding_weight)"/>
+        <arg name="attack_trap_weight" value="$(arg attack_trap_weight)"/>
+        <arg name="attack_oscillation_weight" value="$(arg attack_oscillation_weight)"/>
+        <arg name="attack_herding_direction_x" value="$(arg attack_herding_direction_x)"/>
+        <arg name="attack_herding_direction_y" value="$(arg attack_herding_direction_y)"/>
+        <arg name="attack_herding_direction_z" value="$(arg attack_herding_direction_z)"/>
+        <arg name="attack_use_manual_trap_exit" value="$(arg attack_use_manual_trap_exit)"/>
+        <arg name="attack_trap_exit_x" value="$(arg attack_trap_exit_x)"/>
+        <arg name="attack_trap_exit_y" value="$(arg attack_trap_exit_y)"/>
+        <arg name="attack_trap_exit_z" value="$(arg attack_trap_exit_z)"/>
+        <arg name="attack_trap_exit_radius" value="$(arg attack_trap_exit_radius)"/>
+        <arg name="attack_use_manual_goal" value="$(arg attack_use_manual_goal)"/>
+        <arg name="attack_goal_x" value="$(arg attack_goal_x)"/>
+        <arg name="attack_goal_y" value="$(arg attack_goal_y)"/>
+        <arg name="attack_goal_z" value="$(arg attack_goal_z)"/>
+        <arg name="attack_goal_region_radius" value="$(arg attack_goal_region_radius)"/>
+        <arg name="attack_oscillation_period" value="$(arg attack_oscillation_period)"/>
+        <arg name="attack_malicious_drone_id" value="$(arg attack_malicious_drone_id)"/>
+        <arg name="attack_victim_drone_id" value="$(arg attack_victim_drone_id)"/>
+        <arg name="attack_phantom_fake_drone_id" value="$(arg attack_phantom_fake_drone_id)"/>
+        <arg name="attack_window_enable" value="$(arg attack_window_enable)"/>
+        <arg name="attack_start_time" value="$(arg attack_start_time)"/>
+        <arg name="attack_duration" value="$(arg attack_duration)"/>
+        <arg name="attack_max_offset_radius" value="$(arg attack_max_offset_radius)"/>
+        <arg name="attack_direction_samples" value="$(arg attack_direction_samples)"/>
+        <arg name="attack_radius_samples" value="$(arg attack_radius_samples)"/>
+        <arg name="attack_horizon" value="$(arg attack_horizon)"/>
+        <arg name="attack_dt" value="$(arg attack_dt)"/>
+        <arg name="attack_clearance" value="$(arg attack_clearance)"/>
+        <arg name="attack_continuity_enable" value="$(arg attack_continuity_enable)"/>
+        <arg name="attack_smoothing_time" value="$(arg attack_smoothing_time)"/>
+        <arg name="attack_max_offset_rate" value="$(arg attack_max_offset_rate)"/>
+        <arg name="attack_ramp_ctrl_pts" value="$(arg attack_ramp_ctrl_pts)"/>
+        <arg name="attack_ramp_power" value="$(arg attack_ramp_power)"/>
+        <arg name="attack_max_vel_check" value="$(arg attack_max_vel_check)"/>
+        <arg name="attack_max_acc_check" value="$(arg attack_max_acc_check)"/>
+        <arg name="attack_max_jerk_check" value="$(arg attack_max_jerk_check)"/>
+        <arg name="experiment_log_enable" value="$(arg experiment_log_enable)"/>
+        <arg name="experiment_log_file" value="$(arg experiment_log_file)"/>
+        <arg name="experiment_scenario" value="$(arg experiment_scenario)"/>
+        <arg name="experiment_seed" value="$(arg experiment_seed)"/>
+        <arg name="experiment_swarm_size" value="$(arg experiment_swarm_size)"/>
+        <arg name="experiment_attacker_count" value="$(arg experiment_attacker_count)"/>
+        <arg name="experiment_trial_id" value="$(arg experiment_trial_id)"/>
+        <arg name="experiment_map" value="$(arg experiment_map)"/>
+        <arg name="experiment_comm_radius" value="$(arg experiment_comm_radius)"/>
+        <arg name="experiment_sharing_freq" value="$(arg experiment_sharing_freq)"/>
+        <arg name="experiment_log_owner_drone_id" value="$(arg experiment_log_owner_drone_id)"/>
+        <arg name="experiment_per_uav_log_file" value="$(arg experiment_per_uav_log_file)"/>
+        <arg name="experiment_per_uav_log_enable" value="$(arg experiment_per_uav_log_enable)"/>
+        <arg name="experiment_timeseries_log_file" value="$(arg experiment_timeseries_log_file)"/>
+        <arg name="experiment_timeseries_log_enable" value="$(arg experiment_timeseries_log_enable)"/>
+        <arg name="experiment_timeseries_interval" value="$(arg experiment_timeseries_interval)"/>
+    </include>
+    -->
+  </launch>

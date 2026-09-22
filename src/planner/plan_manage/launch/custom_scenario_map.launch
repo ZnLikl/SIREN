@@ -1,0 +1,16 @@
+<launch>
+  <arg name="scenario_json" default="$(find ego_planner)/scripts/map_publish/1.json"/>
+  <arg name="map_topic" default="/map_generator/global_cloud"/>
+  <arg name="frame_id" default="world"/>
+  <arg name="publish_rate" default="1.0"/>
+
+  <node pkg="ego_planner"
+        type="scenario_executor.py"
+        name="scenario_executor"
+        output="screen">
+    <param name="scenario_json" value="$(arg scenario_json)"/>
+    <param name="map_topic" value="$(arg map_topic)"/>
+    <param name="frame_id" value="$(arg frame_id)"/>
+    <param name="publish_rate" value="$(arg publish_rate)"/>
+  </node>
+</launch>

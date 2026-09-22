@@ -1,0 +1,72 @@
+attack:
+  enable: true
+
+  # Method：假轨迹生成机制，用于方法消融。
+  # benign | random_fake | no_temporal_refresh | no_impact_objective | full_attack | naive_infeasible
+  method: full_attack
+  method_id: 4
+
+  # Scenario：攻击场景目标，用于场景实验。这里手动指定，不做环境识别。
+  # none | herding | trap_enclosure | goal_oscillation | composite
+  scenario: herding
+  scenario_id: 1
+
+  malicious_drone_id: 0
+  victim_drone_id: 7
+
+  window_enable: false
+  start_time: 0.0
+  duration: 9999.0
+
+  fixed_offset_x: 1.5
+  fixed_offset_y: 2.0
+  fixed_offset_z: 0.0
+  max_offset_radius: 4.0
+  min_offset_radius: 0.2
+  direction_samples: 32
+  radius_samples: 10
+  random_max_trials: 50
+
+  horizon: 5.0
+  dt: 0.1
+  clearance: 0.5
+
+  # J = swarm_weight * J_swarm + scenario_weight * J_scenario - offset_penalty_weight * ||offset||
+  swarm_weight: 1.0
+  scenario_weight: 1.0
+  impact_distance_weight: 0.2
+  offset_penalty_weight: 0.005
+
+  herding_weight: 1.0
+  trap_weight: 1.0
+  oscillation_weight: 1.0
+
+  # Herding：把 victim 往指定方向“赶”。
+  herding_direction_x: 0.0
+  herding_direction_y: 1.0
+  herding_direction_z: 0.0
+
+  # Trap：先手动指定出口 / 瓶颈点；不做环境自动识别。
+  use_manual_trap_exit: false
+  trap_exit_x: 0.0
+  trap_exit_y: 0.0
+  trap_exit_z: 1.0
+  trap_exit_radius: 1.5
+
+  # Goal Oscillation：先手动指定目标点；不做环境自动识别。
+  use_manual_goal: false
+  goal_x: 0.0
+  goal_y: 0.0
+  goal_z: 1.0
+  goal_region_radius: 2.0
+  oscillation_period: 2.0
+
+  continuity_enable: true
+  smoothing_time: 0.3
+  max_offset_rate: 2.0
+  ramp_ctrl_pts: 2
+  ramp_power: 1.0
+
+  max_vel_check: 3.0
+  max_acc_check: 4.0
+  max_jerk_check: 8.0

@@ -1,0 +1,8 @@
+prefix=/home/lkl/ego-planner-swarm/devel
+
+Name: multi_map_server
+Description: Description of multi_map_server
+Version: 0.0.0
+Cflags: -I/home/lkl/ego-planner-swarm/devel/include
+Libs: -L${prefix}/lib 
+Requires: geometry_msgs nav_msgs quadrotor_msgs
